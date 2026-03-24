@@ -285,6 +285,111 @@ export class MembershipsService {
   }
 
   /**
+   * Allows a member to leave a PENDING group (self-service).
+   * Validates that the group is PENDING, finds the membership,
+   * removes it, and re-sequences the payoutOrder for remaining members.
+   *
+   * @param groupId - The UUID of the group to leave
+   * @param userId - The UUID of the user leaving
+   * @throws BadRequestException if the group is ACTIVE or COMPLETED
+   * @throws NotFoundException if the group or membership doesn't exist
+   */
+  async leaveGroup(groupId: string, userId: string): Promise<void> {
+    this.logger.log(
+      `User ${userId} attempting to leave group ${groupId}`,
+      'MembershipsService',
+    );
+
+    try {
+      // Find the group
+      const group = await this.groupRepository.findOne({
+        where: { id: groupId },
+      });
+
+      if (!group) {
+        this.logger.warn(`Group ${groupId} not found`, 'MembershipsService');
+        throw new NotFoundException('Group not found');
+      }
+
+      // Validate group is PENDING
+      if (group.status !== GroupStatus.PENDING) {
+        this.logger.warn(
+          `User ${userId} attempted to leave non-PENDING group ${groupId} (status: ${group.status})`,
+          'MembershipsService',
+        );
+        throw new BadRequestException(
+          'Cannot leave a group that is ACTIVE or COMPLETED',
+        );
+      }
+
+      // Find membership by groupId and userId
+      const membership = await this.membershipRepository.findOne({
+        where: { groupId, userId },
+      });
+
+      if (!membership) {
+        this.logger.warn(
+          `Membership not found for user ${userId} in group ${groupId}`,
+          'MembershipsService',
+        );
+        throw new NotFoundException('Membership not found');
+      }
+
+      const departingPayoutOrder = membership.payoutOrder;
+
+      // Delete membership from database
+      await this.membershipRepository.remove(membership);
+
+      // Re-sequence payoutOrder for remaining members
+      const remainingMembers = await this.membershipRepository.find({
+        where: { groupId },
+        order: { payoutOrder: 'ASC' },
+      });
+
+      // Update payout order for members that came after the departing member
+      for (const member of remainingMembers) {
+        if (member.payoutOrder > departingPayoutOrder) {
+          member.payoutOrder -= 1;
+          await this.membershipRepository.save(member);
+        }
+      }
+
+      // Send notification to the departing member
+      await this.notificationsService.notify({
+        userId,
+        type: NotificationType.MEMBER_LEFT,
+        title: 'Left Group',
+        body: `You have left the group "${group.name}"`,
+        metadata: {
+          groupId,
+          groupName: group.name,
+        },
+      });
+
+      this.logger.log(
+        `User ${userId} successfully left group ${groupId}`,
+        'MembershipsService',
+      );
+    } catch (error) {
+      // Re-throw known exceptions
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
+
+      // Log and re-throw unexpected errors
+      this.logger.error(
+        `Failed for user ${userId} to leave group ${groupId}: ${error.message}`,
+        error.stack,
+        'MembershipsService',
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Records a payout to a member.
    * Validates group is ACTIVE, member exists and hasn't received payout yet.
    * Marks member as paid and stores transaction hash.

@@ -186,6 +186,48 @@ export class MembershipsController {
   }
 
   /**
+   * Allows a member to leave a PENDING group (self-service).
+   * Members can only leave before the group becomes active.
+   *
+   * @param groupId - The UUID of the group
+   * @param req - The authenticated request containing user information
+   * @returns No content with HTTP 204 status
+   * @throws BadRequestException if the group is ACTIVE or COMPLETED
+   * @throws NotFoundException if the membership doesn't exist
+   */
+  @Delete(':id/members/me')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Leave group (self-service)',
+    description:
+      'Allows a member to leave a PENDING group. Only allowed before the group becomes active.',
+  })
+  @ApiParam({ name: 'id', description: 'Group UUID', format: 'uuid' })
+  @ApiResponse({
+    status: 204,
+    description: 'Successfully left the group',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Group is ACTIVE or COMPLETED, cannot leave',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Group or membership not found',
+    type: ErrorResponseDto,
+  })
+  @AuditLog({ action: 'DELETE', resource: 'MEMBERSHIP' })
+  async leaveGroup(
+    @Param('id', ParseUUIDPipe) groupId: string,
+    @Request() req: any,
+  ): Promise<void> {
+    const userId = req.user.userId;
+    await this.membershipsService.leaveGroup(groupId, userId);
+  }
+
+  /**
    * Records a payout to a member.
    * Admin-only endpoint that marks a member as having received their payout.
    *

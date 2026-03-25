@@ -8,8 +8,10 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { ApiVersionDeprecationInterceptor } from './common/interceptors/api-version-deprecation.interceptor';
 import { WinstonLogger } from './common/logger/winston.logger';
 import { RateLimitHeadersInterceptor } from './throttler/interceptors/rate-limit-headers.interceptor';
+import { initializeTracing } from './common/tracing/tracing';
 
 async function bootstrap() {
+  initializeTracing();
   const app = await NestFactory.create(AppModule, {
     logger: new WinstonLogger(),
   });

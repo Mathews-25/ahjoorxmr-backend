@@ -13,13 +13,14 @@ import { GroupsModule } from './groups/groups.module';
 import { MembershipsModule } from './memberships/memberships.module';
 import { GroupsModule } from './groups/groups.module';
 import { ContributionsModule } from './contributions/contributions.module';
-import { RedisModule } from './common/redis/redis.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
 import { Membership } from './memberships/entities/membership.entity';
 import { Group } from './groups/entities/group.entity';
 import { User } from './users/entities/user.entity';
 import { Contribution } from './contributions/entities/contribution.entity';
 import { AuditLog } from './audit/entities/audit-log.entity';
+import { KycDocument } from './kyc/entities/kyc-document.entity';
+import { KycModule } from './kyc/kyc.module';
 import { StellarModule } from './stellar/stellar.module';
 import { EventListenerModule } from './event-listener/event-listener.module';
 import { CustomThrottlerModule } from './throttler/throttler.module';
@@ -47,7 +48,7 @@ import { SeedModule } from './database/seeds/seed.module';
           username: configService.get<string>('DB_USERNAME') || 'postgres',
           password: configService.get<string>('DB_PASSWORD') || 'postgres',
           database: configService.get<string>('DB_NAME') || 'ahjoorxmr',
-          entities: [Membership, Group, User, Contribution],
+          entities: [Membership, Group, User, Contribution, AuditLog, KycDocument],
           synchronize: isDevelopment, // Auto-create tables only in development
           logging: isDevelopment, // Enable logging only in development
         };
@@ -70,6 +71,7 @@ import { SeedModule } from './database/seeds/seed.module';
     EventListenerModule,
     AuditModule,
     SeedModule,
+    KycModule,
   ],
   controllers: [AppController],
   providers: [

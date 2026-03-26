@@ -2,12 +2,14 @@ import {
   Injectable,
   UnauthorizedException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
+import { TwoFactorService } from './two-factor.service';
 
 @Injectable()
 export class AuthService {
@@ -15,6 +17,7 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly twoFactorService: TwoFactorService,
   ) { }
 
   async register(registerDto: RegisterDto) {
@@ -56,6 +59,21 @@ export class AuthService {
     const isPasswordValid = await this.comparePassword(password, user.password);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // If 2FA is enabled, issue a short-lived pre-auth token instead of full tokens.
+    // The client must POST /auth/2fa/login with this token + their TOTP code.
+    if (user.twoFactorEnabled) {
+      const preAuthToken = this.twoFactorService.issuePreAuthToken(
+        user.id,
+        user.email ?? '',
+        user.role,
+      );
+      throw new ForbiddenException({
+        message: '2FA verification required',
+        preAuthToken,
+        twoFactorRequired: true,
+      });
     }
 
     const tokens = await this.generateTokens(
@@ -114,7 +132,11 @@ export class AuthService {
     return bcrypt.compare(password, hash);
   }
 
-  private async generateTokens(userId: string, email: string, role: string, tokenVersion?: number) {
+  async getUserForTokenGeneration(userId: string) {
+    return this.usersService.findById(userId);
+  }
+
+  async generateTokens(userId: string, email: string, role: string, tokenVersion?: number) {
     const user = await this.usersService.findById(userId);
     const version = tokenVersion ?? user.tokenVersion ?? 0;
 

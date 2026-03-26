@@ -113,6 +113,14 @@
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "^bcrypt$": "<rootDir>/__mocks__/bcrypt.js",
+      "^otplib$": "<rootDir>/__mocks__/otplib.js",
+      "^qrcode$": "<rootDir>/__mocks__/qrcode.js"
+    },
+    "transformIgnorePatterns": [
+      "node_modules/(?!(@scure|@otplib)/)"
+    ]
   }
 }

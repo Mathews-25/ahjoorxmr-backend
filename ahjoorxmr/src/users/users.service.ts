@@ -55,4 +55,21 @@ export class UsersService {
     }
     return user;
   }
+
+  async update2FA(
+    userId: string,
+    fields: {
+      twoFactorSecret?: string | null;
+      twoFactorEnabled?: boolean;
+      backupCodes?: string[] | null;
+    },
+  ): Promise<void> {
+    await this.userRepository.update(userId, fields);
+  }
+
+  async findById2FA(userId: string): Promise<User> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    return user;
+  }
 }

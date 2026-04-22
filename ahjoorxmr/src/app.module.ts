@@ -8,6 +8,8 @@ import { AppService } from './app.service';
 import { RedisModule } from './common/redis/redis.module';
 import { CacheInterceptor } from './common/interceptors/cache.interceptor';
 import { PiiScrubbingInterceptor } from './common/interceptors/pii-scrubbing.interceptor';
+import { TimeoutInterceptor } from './common/interceptors/timeout.interceptor';
+import { SlowRequestInterceptor } from './common/interceptors/slow-request.interceptor';
 import { WinstonLogger } from './common/logger/winston.logger';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
@@ -15,7 +17,6 @@ import { StellarAuthModule } from './stellar-auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { GroupsModule } from './groups/groups.module';
 import { MembershipsModule } from './memberships/memberships.module';
-import { GroupsModule } from './groups/groups.module';
 import { ContributionsModule } from './contributions/contributions.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
 import { Membership } from './memberships/entities/membership.entity';
@@ -26,12 +27,16 @@ import { AuditLog } from './audit/entities/audit-log.entity';
 import { KycDocument } from './kyc/entities/kyc-document.entity';
 import { PayoutTransaction } from './groups/entities/payout-transaction.entity';
 import { JobFailure } from './bullmq/entities/job-failure.entity';
+import { QueryAnalysis } from './database/entities/query-analysis.entity';
 import { KycModule } from './kyc/kyc.module';
 import { StellarModule } from './stellar/stellar.module';
 import { EventListenerModule } from './event-listener/event-listener.module';
 import { CustomThrottlerModule } from './throttler/throttler.module';
 import { AuditModule } from './audit/audit.module';
 import { SeedModule } from './database/seeds/seed.module';
+import { DatabasePerformanceModule } from './database/database-performance.module';
+import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
+import { CommonModule } from './common/common.module';
 import { MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 
@@ -65,9 +70,21 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
             KycDocument,
             PayoutTransaction,
             JobFailure,
+            QueryAnalysis,
           ],
           synchronize: isDevelopment, // Auto-create tables only in development
           logging: isDevelopment, // Enable logging only in development
+          extra: {
+            // Query timeout configuration
+            statement_timeout: parseInt(
+              configService.get<string>('DB_QUERY_TIMEOUT_MS') || '5000',
+              10,
+            ),
+            query_timeout: parseInt(
+              configService.get<string>('DB_QUERY_TIMEOUT_MS') || '5000',
+              10,
+            ),
+          },
         };
       },
       inject: [ConfigService],
@@ -89,6 +106,9 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
     AuditModule,
     SeedModule,
     KycModule,
+    DatabasePerformanceModule,
+    FeatureFlagsModule,
+    CommonModule,
   ],
   controllers: [AppController],
   providers: [
@@ -101,6 +121,14 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
     {
       provide: APP_INTERCEPTOR,
       useClass: CacheInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TimeoutInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: SlowRequestInterceptor,
     },
   ],
 })

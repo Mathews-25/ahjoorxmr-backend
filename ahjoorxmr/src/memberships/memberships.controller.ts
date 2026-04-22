@@ -11,6 +11,7 @@ import {
   UseGuards,
   Request,
   Version,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -18,6 +19,7 @@ import {
   ApiResponse,
   ApiParam,
   ApiBody,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { MembershipsService } from './memberships.service';
 import { CreateMembershipDto } from './dto/create-membership.dto';
@@ -26,6 +28,10 @@ import { RecordPayoutDto } from './dto/record-payout.dto';
 import { JwtAuthGuard } from '../groups/guards/jwt-auth.guard';
 import { AuditLog } from '../audit/decorators/audit-log.decorator';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
+import {
+  IdempotencyInterceptor,
+  RequiresIdempotency,
+} from '../common/interceptors/idempotency.interceptor';
 
 /**
  * Controller for managing ROSCA group memberships.
@@ -34,6 +40,7 @@ import { ErrorResponseDto } from '../common/dto/error-response.dto';
 @ApiTags('Memberships')
 @Controller('groups')
 @Version('1')
+@UseInterceptors(IdempotencyInterceptor)
 export class MembershipsController {
   constructor(private readonly membershipsService: MembershipsService) {}
 
@@ -230,17 +237,53 @@ export class MembershipsController {
   /**
    * Records a payout to a member.
    * Admin-only endpoint that marks a member as having received their payout.
+   * Requires Idempotency-Key header to prevent duplicate payouts.
    *
    * @param groupId - The UUID of the group
    * @param recordPayoutDto - Payout details (recipientUserId and transactionHash)
    * @returns The updated membership with HTTP 200 status
    * @throws NotFoundException if group or membership doesn't exist
-   * @throws BadRequestException if group is not ACTIVE
+   * @throws BadRequestException if group is not ACTIVE or Idempotency-Key is missing/invalid
    * @throws ConflictException if member already received payout
    */
   @Post(':id/payout')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
+  @RequiresIdempotency()
+  @ApiOperation({
+    summary: 'Record payout to member',
+    description:
+      'Records a payout to a member. Requires Idempotency-Key header (UUID v4) to prevent duplicate payouts.',
+  })
+  @ApiParam({ name: 'id', description: 'Group UUID', format: 'uuid' })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    description: 'UUID v4 for idempotent request handling',
+    required: true,
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiBody({ type: RecordPayoutDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Payout recorded successfully',
+    type: MembershipResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Group is not ACTIVE, or missing/invalid Idempotency-Key',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Group or membership not found',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Member already received payout',
+    type: ErrorResponseDto,
+  })
+  @AuditLog({ action: 'UPDATE', resource: 'MEMBERSHIP' })
   async recordPayout(
     @Param('id', ParseUUIDPipe) groupId: string,
     @Body() recordPayoutDto: RecordPayoutDto,
